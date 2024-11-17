@@ -51,6 +51,5 @@ python scripts/parte4-2.py
 
 ## 4. Contato
 Caso haja dúvidas ou problemas durante a execução, pode entrar em contato comigo!
-Aluno: João Guilherme Benjamin Alves de Rezende.
 Email: benj7100@gmail.com
 
