@@ -1,23 +1,22 @@
-# !pip install nltk spacy stanza regex
+# pip install nltk gensim stanza spacy regex matplotlib
 
 import re
-import spacy
 import nltk
-from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
-from nltk import pos_tag
-from nltk.stem import WordNetLemmatizer
 import pandas as pd
-from spacy import displacy
 import stanza
+import spacy
+import matplotlib.pyplot as plt
 
-# Configurações iniciais
-nltk.download('punkt')
+# Baixar recursos necessários para as bibliotecas
 nltk.download('stopwords')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('wordnet')
 
-# Texto do corpus
+# Inicializar Stanza sem o NER
+stanza.download('pt')
+nlp_stanza = stanza.Pipeline('pt', processors='tokenize,pos,lemma,depparse')
+nlp_spacy = spacy.load("pt_core_news_sm")
+
+# Corpus
 corpus = """A Ana Lis mora em uma cidade linda, chamada João Pessoa. Humanos compram
 livros e Ana Lis comprou um livro sobre biologia marinha. O João leu o jornal na
 biblioteca durante a manhã. O poeta escreveu uma carta para o professor da faculdade
@@ -28,9 +27,9 @@ almoço. O carteiro entregou uma encomenda para a vizinha. A vaca comeu o capim 
 pasto e por isso é herbívora e não é carnívora. O médico examinou o paciente com
 cuidado no consultório. [O artista pintou um quadro no ateliê]."""
 
-# 1. Limpeza do texto
+# 1. Limpeza do Corpus
 def clean_text(text):
-    text = text.lower()  # Converte para minúsculas
+    text = text.lower()
     text = re.sub(r'[áàâãä]', 'a', text)
     text = re.sub(r'[éèêë]', 'e', text)
     text = re.sub(r'[íìîï]', 'i', text)
@@ -38,67 +37,66 @@ def clean_text(text):
     text = re.sub(r'[úùûü]', 'u', text)
     text = re.sub(r'[ç]', 'c', text)
     text = re.sub(r'[^a-z\s]', '', text)  # Remove pontuação e números
-    text = re.sub(r'\s+', ' ', text).strip()  # Remove espaços extras
+    text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 cleaned_corpus = clean_text(corpus)
-print("Texto limpo:\n", cleaned_corpus)
+print("Texto Limpo:\n", cleaned_corpus)
 
-# 2. Tokenização
-tokens = word_tokenize(cleaned_corpus)
-print("\nTokens:\n", tokens)
+# 2. Tokenização com Stanza
+doc_stanza = nlp_stanza(cleaned_corpus)
+tokens = [word.text for sentence in doc_stanza.sentences for word in sentence.words]
+print("\nTokens (Stanza):\n", tokens)
 
-# 3. Stopwords
+# Remoção de Stopwords
 stop_words = set(stopwords.words('portuguese'))
 tokens_no_stopwords = [word for word in tokens if word not in stop_words]
-print("\nTokens sem stopwords:\n", tokens_no_stopwords)
+print("\nTokens sem Stopwords:\n", tokens_no_stopwords)
 
-# 4. POS Tagging com NLTK
-pos_tags = pos_tag(tokens_no_stopwords, lang='por')
-print("\nPOS Tagging:\n", pos_tags)
+# 3. POS Tagging com Stanza
+pos_tags_stanza = [(word.text, word.upos) for sentence in doc_stanza.sentences for word in sentence.words]
+df_pos_tags = pd.DataFrame(pos_tags_stanza, columns=["Token", "Classe Gramatical"])
+print("\nPOS Tagging (Stanza):\n", df_pos_tags)
 
-# 5. Lematização
-lemmatizer = WordNetLemmatizer()
-lemmatized_tokens = [lemmatizer.lemmatize(token) for token in tokens_no_stopwords]
-print("\nTokens Lematizados:\n", lemmatized_tokens)
+# 4. Lematização com Stanza
+lemmas = [(word.text, word.lemma) for sentence in doc_stanza.sentences for word in sentence.words]
+df_lemmas = pd.DataFrame(lemmas, columns=["Token", "Lema"])
+print("\nLematização (Stanza):\n", df_lemmas)
 
-# 6. Análise de Dependências e Entidades Nomeadas com spaCy
-nlp_spacy = spacy.load('pt_core_news_sm')
-doc = nlp_spacy(cleaned_corpus)
+# 5. Dependências Sintáticas e Entidades Nomeadas com spaCy
+doc_spacy = nlp_spacy(cleaned_corpus)
 
-# Dependências sintáticas
-print("\nDependências sintáticas:")
-for token in doc:
-    print(f"{token.text} -> {token.dep_} -> {token.head.text}")
+# Dependências Sintáticas
+dependencies = [(token.text, token.dep_, token.head.text) for token in doc_spacy]
+df_dependencies = pd.DataFrame(dependencies, columns=["Token", "Relação", "Cabeça"])
+print("\nDependências Sintáticas:\n", df_dependencies)
 
 # Entidades Nomeadas
-print("\nEntidades Nomeadas:")
-for ent in doc.ents:
-    print(f"{ent.text} -> {ent.label_}")
+entities = [(ent.text, ent.label_) for ent in doc_spacy.ents]
+df_entities = pd.DataFrame(entities, columns=["Entidade", "Tipo"])
+print("\nEntidades Nomeadas (spaCy):\n", df_entities)
 
-# 7. Criar Dataset organizado por classe gramatical
-dataset_pos = pd.DataFrame(pos_tags, columns=['Token', 'Classe Gramatical'])
-print("\nDataset por Classe Gramatical:\n", dataset_pos.head())
+# 6. Relações Sujeito-Predicado-Objeto
+relations = [(token.head.text, token.text, token.dep_) for token in doc_spacy if token.dep_ in ["nsubj", "obj"]]
+df_relations = pd.DataFrame(relations, columns=["Predicado", "Token", "Relação"])
+print("\nRelações (Sujeito-Predicado-Objeto):\n", df_relations)
 
-# 8. Extração de Relações (Sujeito - Predicado - Objeto)
-relations = []
-for token in doc:
-    if token.dep_ in ("nsubj", "obj"):
-        relations.append((token.head.text, token.text, token.dep_))
+# 7. Visualizações
 
-relations_df = pd.DataFrame(relations, columns=["Predicado", "Token", "Relação"])
-print("\nRelações extraídas:\n", relations_df)
+# Gráfico 1: Frequência de Classes Gramaticais
+freq_pos = df_pos_tags["Classe Gramatical"].value_counts()
+freq_pos.plot(kind='bar', title='Frequência de Classes Gramaticais', xlabel='Classe Gramatical', ylabel='Frequência')
+plt.savefig("frequencia_classes_gramaticais.png")
+plt.close()
 
-# 9. Avaliação (percentual de acerto e erro)
-# Aqui podemos comparar manualmente as relações extraídas e os tokens categorizados
-# Gráficos
-import matplotlib.pyplot as plt
+# Gráfico 2: Frequência de Tokens
+freq_tokens = pd.Series(tokens_no_stopwords).value_counts()
+freq_tokens.head(10).plot(kind='bar', title='Frequência de Tokens', xlabel='Tokens', ylabel='Frequência')
+plt.savefig("frequencia_tokens.png")
+plt.close()
 
-# Frequência de classes gramaticais
-freq_classes = dataset_pos['Classe Gramatical'].value_counts()
-freq_classes.plot(kind='bar', title='Frequência de Classes Gramaticais', xlabel='Classe', ylabel='Frequência')
-plt.show()
-
-# Relações extraídas
-relations_df['Relação'].value_counts().plot(kind='bar', title='Frequência de Relações', xlabel='Tipo de Relação', ylabel='Frequência')
-plt.show()
+# Gráfico 3: Relações Sujeito-Predicado-Objeto
+relation_freq = df_relations["Relação"].value_counts()
+relation_freq.plot(kind='bar', title='Frequência de Relações', xlabel='Relações', ylabel='Frequência')
+plt.savefig("frequencia_relacoes.png")
+plt.close()
